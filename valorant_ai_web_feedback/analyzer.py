@@ -8,7 +8,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from google.genai.errors import ServerError
+from google.genai import errors
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -126,12 +126,21 @@ def analyze_video(video_path: Path) -> dict:
                     result["model_used"] = model
                     return result
 
-                except ServerError as exc:
-                    last_error = exc
-                    if "503" in str(exc):
-                        time.sleep(2 + attempt * 3)
-                        continue
-                    raise
+                except errors.APIError as exc:
+    last_error = exc
+    error_text = str(exc)
+
+    # 서버 혼잡: 같은 모델 재시도
+    if "503" in error_text:
+        time.sleep(2 + attempt * 3)
+        continue
+
+    # 무료 quota 초과: 다음 모델로 이동
+    if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+        print(f"{model} quota 초과 → 다음 모델로 전환")
+        break
+
+    raise
 
         raise RuntimeError(
             f"Gemini 서버가 혼잡합니다. 마지막 오류: {last_error}"
