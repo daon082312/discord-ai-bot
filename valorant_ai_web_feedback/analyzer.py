@@ -130,12 +130,10 @@ def analyze_video(video_path: Path) -> dict:
     last_error = exc
     error_text = str(exc)
 
-    # 서버 혼잡: 같은 모델 재시도
     if "503" in error_text:
         time.sleep(2 + attempt * 3)
         continue
 
-    # 무료 quota 초과: 다음 모델로 이동
     if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
         print(f"{model} quota 초과 → 다음 모델로 전환")
         break
