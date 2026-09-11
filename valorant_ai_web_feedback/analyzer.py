@@ -93,6 +93,7 @@ def _models():
 
 def analyze_video(video_path: Path) -> dict:
     api_key = os.getenv("GEMINI_API_KEY")
+
     if not api_key:
         raise RuntimeError(".env에 GEMINI_API_KEY가 없습니다.")
 
@@ -113,35 +114,47 @@ def analyze_video(video_path: Path) -> dict:
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
                             response_schema=ValorantAnalysis,
-                            temperature=0.2
-                        )
+                            temperature=0.2,
+                        ),
                     )
 
                     if not response.text:
-                        raise RuntimeError("Gemini가 빈 응답을 반환했습니다.")
+                        raise RuntimeError(
+                            "Gemini가 빈 응답을 반환했습니다."
+                        )
 
                     result = ValorantAnalysis.model_validate_json(
                         response.text
                     ).model_dump()
+
                     result["model_used"] = model
                     return result
 
                 except errors.APIError as exc:
-    last_error = exc
-    error_text = str(exc)
+                    last_error = exc
+                    error_text = str(exc)
 
-    if "503" in error_text:
-        time.sleep(2 + attempt * 3)
-        continue
+                    # 서버 혼잡: 같은 모델에서 잠시 후 재시도
+                    if "503" in error_text:
+                        time.sleep(2 + attempt * 3)
+                        continue
 
-    if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-        print(f"{model} quota 초과 → 다음 모델로 전환")
-        break
+                    # 무료 quota 초과: 다음 모델로 넘어감
+                    if (
+                        "429" in error_text
+                        or "RESOURCE_EXHAUSTED" in error_text
+                    ):
+                        print(
+                            f"{model} quota 초과 → "
+                            "다음 모델로 전환"
+                        )
+                        break
 
-    raise
+                    raise
 
         raise RuntimeError(
-            f"Gemini 서버가 혼잡합니다. 마지막 오류: {last_error}"
+            "사용 가능한 Gemini 모델의 quota가 모두 "
+            f"소진되었거나 서버가 혼잡합니다. 마지막 오류: {last_error}"
         )
 
     finally:
